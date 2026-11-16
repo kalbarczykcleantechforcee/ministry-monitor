@@ -1,11 +1,15 @@
 // Two ways to get a page:
 //  - fetchMarkdown: Firecrawl /v2/scrape (1 credit per call). Used where sites need a real browser.
 //  - fetchHtml:     plain fetch, free. Used wherever a site serves usable HTML.
+// With DUMP_DIR set (e.g. DUMP_DIR=debug), every fetched page is saved there and reused on
+// later runs, so parsers can be re-tuned offline without spending credits.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const FIRECRAWL_URL = "https://api.firecrawl.dev/v2/scrape";
 // Free plan has a low per-minute limit; keep a gap between calls.
 const MIN_GAP_MS = 7000;
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = Number(process.env.FIRECRAWL_ATTEMPTS || 3);
 
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -15,7 +19,41 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let lastFirecrawlCall = 0;
 export const stats = { firecrawlCalls: 0, plainFetches: 0 };
 
-export async function fetchMarkdown(url: string): Promise<string> {
+function dumpPath(url: string, ext: "md" | "html"): string | null {
+  const dir = process.env.DUMP_DIR;
+  if (!dir) return null;
+  mkdirSync(dir, { recursive: true });
+  return join(dir, url.replace(/^https?:\/\//, "").replace(/[^a-zA-Z0-9.-]+/g, "_").slice(0, 150) + "." + ext);
+}
+
+async function cached(url: string, ext: "md" | "html", fetchLive: () => Promise<string>): Promise<string> {
+  const path = dumpPath(url, ext);
+  if (path && existsSync(path)) {
+    console.log(`  [cache] ${path}`);
+    return readFileSync(path, "utf8");
+  }
+  const text = await fetchLive();
+  if (path) writeFileSync(path, text);
+  return text;
+}
+
+export function fetchMarkdown(url: string): Promise<string> {
+  return cached(url, "md", () => fetchMarkdownLive(url));
+}
+
+export function fetchHtml(url: string): Promise<string> {
+  return cached(url, "html", () => fetchHtmlLive(url));
+}
+
+function locationFor(url: string): { country: string; languages: string[] } | null {
+  const host = new URL(url).hostname;
+  if (host.endsWith(".pl")) return { country: "PL", languages: ["pl"] };
+  if (host.endsWith(".cz")) return { country: "CZ", languages: ["cs"] };
+  if (host.endsWith(".sk")) return { country: "SK", languages: ["sk"] };
+  return null;
+}
+
+async function fetchMarkdownLive(url: string): Promise<string> {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) throw new Error("FIRECRAWL_API_KEY is not set");
 
@@ -34,7 +72,11 @@ export async function fetchMarkdown(url: string): Promise<string> {
         formats: ["markdown"],
         onlyMainContent: false, // parsers expect the whole page and stop at footer markers themselves
         maxAge: 0, // always fetch live: listing pages change daily
+        timeout: 90000,
+        // gov.pl blocks foreign proxies — fetch each site from its own country.
+        ...(locationFor(url) && { location: locationFor(url) }),
       }),
+      signal: AbortSignal.timeout(120000),
     });
 
     if (resp.status === 429 || resp.status >= 500) {
@@ -54,9 +96,13 @@ export async function fetchMarkdown(url: string): Promise<string> {
   throw new Error(`Firecrawl gave up on ${url}: ${lastError}`);
 }
 
-export async function fetchHtml(url: string): Promise<string> {
+async function fetchHtmlLive(url: string): Promise<string> {
   stats.plainFetches++;
-  const resp = await fetch(url, { redirect: "follow", headers: { "User-Agent": BROWSER_UA } });
+  const resp = await fetch(url, {
+    redirect: "follow",
+    headers: { "User-Agent": BROWSER_UA },
+    signal: AbortSignal.timeout(60000),
+  });
   if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
   return resp.text();
 }

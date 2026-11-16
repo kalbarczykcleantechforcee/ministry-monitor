@@ -9,6 +9,7 @@ import {
   parseEnvirofondPage,
   parseGovPlHomepage,
   parseGovPlListing,
+  parseMfPressPage,
   parseMhsrPage,
   parseMineduPage,
   parseMinzpHtml,
@@ -34,6 +35,8 @@ export async function scrapeSource(source: Source): Promise<Article[]> {
       console.log(`[${source.key}] Latest page: ${latest}`);
       return parseCzechPage(await fetchMarkdown(latest), latest);
     }
+    case "mf":
+      return parseMfPressPage(await fetchMarkdown(source.url));
     case "msmt":
       return parseMsmtPage(await fetchMarkdown(source.url));
     case "sfzp":

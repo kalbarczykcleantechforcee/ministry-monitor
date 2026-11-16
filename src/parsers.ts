@@ -169,7 +169,8 @@ export function parseCzechPage(markdown: string, baseUrl?: string): Article[] {
 
   const linkRegex = /^###\s*\[(.+?)\]\((.+?)\)/;
   const numDateRegex = /(\d{1,2})\\?\.\s*(\d{1,2})\\?\.\s*(\d{4})/;
-  const czDateRegex = /(\d{1,2})\.\s*(\S+)\s+(\d{4})/;
+  // Firecrawl escapes the dot after the day: "16\. listopad 2026"
+  const czDateRegex = /(\d{1,2})\\?\.\s*(\S+)\s+(\d{4})/;
 
   let baseOrigin = "";
   if (baseUrl) {
@@ -218,6 +219,23 @@ export function parseCzechPage(markdown: string, baseUrl?: string): Article[] {
       continue;
     }
     i++;
+  }
+  return articles;
+}
+
+// MF press releases (/media/tiskove-zpravy): "[Title](…/tiskove-zpravy/2026/slug)" then "22\. října 2026"
+export function parseMfPressPage(markdown: string): Article[] {
+  const articles: Article[] = [];
+  const lines = markdown.split("\n").map((l) => l.trim()).filter(Boolean);
+  const linkRegex = /^\[(.+)\]\((https:\/\/mf\.gov\.cz\/cs\/ministerstvo\/media\/tiskove-zpravy\/\d{4}\/[^)\s]+)\)$/;
+  const dateRegex = /^(\d{1,2})\\?\.\s*(\S+)\s+(\d{4})$/;
+  for (let i = 0; i < lines.length - 1; i++) {
+    const link = lines[i].match(linkRegex);
+    const date = lines[i + 1].match(dateRegex);
+    const month = date && CZ_MONTHS[date[2].toLowerCase()];
+    if (link && date && month) {
+      articles.push({ title: link[1].trim(), url: link[2], date: `${date[1].padStart(2, "0")}.${month}.${date[3]}`, summary: "" });
+    }
   }
   return articles;
 }
@@ -273,7 +291,8 @@ export function parseSfzpPage(markdown: string): Article[] {
         i++;
       }
 
-      articles.push({ title, url, date, summary: summaryLines.join(" ").slice(0, 500) });
+      // Real articles always have a date; undated links are nav/footer junk ("Kontakty", cookies…)
+      if (date) articles.push({ title, url, date, summary: summaryLines.join(" ").slice(0, 500) });
       continue;
     }
     i++;
@@ -281,44 +300,26 @@ export function parseSfzpPage(markdown: string): Article[] {
   return articles;
 }
 
-// MŠMT: "### [Title](url)" ... preview ... "[Celý článek](...) Weekday, DD. month YYYY"
+// MŠMT (Next.js card grid, Firecrawl markdown). Each card is one big link:
+//   [![img](...)\\ \\ **Title** \\ \\ 16\. listopadu 2026\\ \\ Summary…\\ \\ Categories](https://msmt.gov.cz/aktuality/slug)
 export function parseMsmtPage(markdown: string): Article[] {
   const articles: Article[] = [];
-  const lines = markdown.split("\n");
-
-  const linkRegex = /^###\s*\[(.+?)\]\((.+?)\)/;
-  const dateRegex = /(\d{1,2})\.\s*(\S+)\s+(\d{4})/;
-
-  let i = 0;
-  while (i < lines.length) {
-    const linkMatch = lines[i].trim().match(linkRegex);
-    if (linkMatch) {
-      const title = linkMatch[1].trim();
-      const url = linkMatch[2].trim();
-      i++;
-
-      const summaryLines: string[] = [];
-      let date = "";
-      while (i < lines.length) {
-        const line = lines[i].trim();
-        if (line.match(linkRegex)) break;
-        if (line.startsWith("[Celý článek]")) {
-          const dateMatch = line.match(dateRegex);
-          if (dateMatch) {
-            const month = CZ_MONTHS[dateMatch[2].toLowerCase()] || "01";
-            date = `${dateMatch[1].padStart(2, "0")}.${month}.${dateMatch[3]}`;
-          }
-          i++;
-          break;
-        }
-        if (!line.startsWith("![") && line !== "") summaryLines.push(line);
-        i++;
-      }
-
-      articles.push({ title, url, date, summary: summaryLines.join(" ").slice(0, 500) });
-      continue;
-    }
-    i++;
+  const cardRegex =
+    /\*\*(.+?)\*\*[\s\\]*?(\d{1,2})\\?\.\s*(\S+)\s+(\d{4})[\s\\]*([\s\S]*?)\]\((https?:\/\/[^)\s]+)\)/g;
+  let m;
+  while ((m = cardRegex.exec(markdown)) !== null) {
+    const [, rawTitle, day, monthName, year, body, url] = m;
+    const month = CZ_MONTHS[monthName.toLowerCase()];
+    if (!month) continue;
+    // body = "Summary…\\ \\ Categories" — drop the trailing category line
+    const parts = body.split(/\\\\\s*\n/).map((p) => p.replace(/\\/g, "").trim()).filter(Boolean);
+    const summary = parts.length > 1 ? parts.slice(0, -1).join(" ") : "";
+    articles.push({
+      title: rawTitle.replace(/\\/g, "").trim(),
+      url,
+      date: `${day.padStart(2, "0")}.${month}.${year}`,
+      summary: summary.replace(/\[…\]$/, "…").slice(0, 500),
+    });
   }
   return articles;
 }

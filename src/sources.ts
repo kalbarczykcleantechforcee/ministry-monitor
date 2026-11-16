@@ -5,6 +5,7 @@ export type SourceKind =
   | "govpl-homepage" // gov.pl ministry homepage, "Aktualności" section
   | "czech" // MŽP / MF / DIA: "### [Title](url)" + date
   | "mpo" // MPO: find latest stranka-NNN, then parse like "czech"
+  | "mf" // MF press releases: "[Title](url)" + date line
   | "msmt"
   | "sfzp"
   | "minzp" // plain HTML fetch (page has ~200 articles; no Firecrawl needed)
@@ -50,7 +51,7 @@ export const COUNTRIES: Country[] = [
       { key: "cz-mpo", label: "MPO (Ministry of Industry and Trade)", url: "https://mpo.gov.cz/cz/rozcestnik/pro-media/tiskove-zpravy/", kind: "mpo" },
       { key: "cz-msmt", label: "MŠMT (Ministry of Education, Youth and Sports)", url: "https://msmt.gov.cz/aktuality", kind: "msmt" },
       { key: "cz-sfzp", label: "SFŽP (State Environmental Fund)", url: "https://sfzp.gov.cz/tiskove-centrum/aktuality/", kind: "sfzp" },
-      { key: "cz-mf", label: "MF (Ministry of Finance)", url: "https://mf.gov.cz/cs/ministerstvo/media/vydali-jsme", kind: "czech" },
+      { key: "cz-mf", label: "MF (Ministry of Finance)", url: "https://mf.gov.cz/cs/ministerstvo/media/tiskove-zpravy", kind: "mf" },
       { key: "cz-dia", label: "DIA (Digital and Information Agency)", url: "https://www.dia.gov.cz/cs/aktuality", kind: "czech" },
     ],
   },
