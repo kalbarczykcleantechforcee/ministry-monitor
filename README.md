@@ -29,7 +29,7 @@ Both can also be started by hand from the Actions tab. `daily.yml` takes an opti
 
 ## Secrets (Settings → Secrets and variables → Actions)
 
-`FIRECRAWL_API_KEY`, `GEMINI_API_KEY`, `DIGEST_EMAILS` (comma-separated recipients), plus the email sender's credentials (being switched from Gmail to Brevo: `BREVO_API_KEY`, `DIGEST_FROM`).
+`FIRECRAWL_API_KEY`, `GEMINI_API_KEY`, `DIGEST_EMAILS` (comma-separated recipients), `BREVO_API_KEY` and `DIGEST_FROM` (the sender verified in Brevo).
 
 ## Local runs
 

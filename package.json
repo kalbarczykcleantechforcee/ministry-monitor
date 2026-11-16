@@ -11,8 +11,5 @@
     "score": "node --env-file-if-exists=.env scripts/score.ts",
     "preview": "node --env-file-if-exists=.env scripts/digest.ts --preview",
     "digest": "node --env-file-if-exists=.env scripts/digest.ts"
-  },
-  "dependencies": {
-    "nodemailer": "^6.10.1"
   }
 }

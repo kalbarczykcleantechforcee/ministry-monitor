@@ -25,7 +25,7 @@ jobs:
       - run: npm ci
       - name: Send digest
         env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          DIGEST_FROM: ${{ secrets.DIGEST_FROM }}
           DIGEST_EMAILS: ${{ secrets.DIGEST_EMAILS }}
         run: node scripts/digest.ts

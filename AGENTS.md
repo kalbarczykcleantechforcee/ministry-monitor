@@ -38,7 +38,7 @@ Runtime: **Node ≥ 22.18**, TypeScript run directly via Node's type stripping (
 ## Pipeline rules (deliberate decisions)
 
 - **7-day cutoffs:** `scrape.ts` skips articles published more than 7 days ago (`SCRAPE_MAX_AGE_DAYS`); `score.ts` only scores articles scraped in the last 7 days (`SCORE_MAX_AGE_DAYS`). This stops pages that list a whole year (e.g. MF) from flooding the digest.
-- **Digest:** score ≥ 40 (`SCORE_THRESHOLD` in render.ts), `scraped_at` within the last 7 days, PL first then CZ, SK.
+- **Digest:** score ≥ 40 (`SCORE_THRESHOLD` in render.ts), `scraped_at` within the last 7 days, PL first then CZ, SK. Same-story duplicates across sources (title equal or a prefix of another) are merged into one item with "also: …". CZ/SK items show `title_en` with the original title underneath.
 - **Model:** `gemini-3.8-flash`, pinned on purpose (an auto-updating alias would shift scores silently). Override with `GEMINI_MODEL`. One combined prompt covers both former monitors' focus areas; edit `SYSTEM_PROMPT` in `src/scorer.ts`.
 - **Firecrawl only.** Every request (listings and article text) goes through Firecrawl, by the owner's choice. Don't reintroduce plain `fetch` for pages.
 - **Proxy location per TLD** (`locationFor` in fetcher.ts). gov.pl rejects foreign proxies (`ERR_TUNNEL_CONNECTION_FAILED`). Keep `location` set.
@@ -76,7 +76,7 @@ GitHub Actions secrets (never commit them; `.env` is gitignored and holds the sa
 | `DIGEST_EMAILS` | digest, comma-separated recipients (keep out of the repo) |
 | `BREVO_API_KEY`, `DIGEST_FROM` | digest, via the Brevo HTTP API with a verified sender |
 
-⚠️ **In progress (Nov 2026):** `scripts/digest.ts` still sends through Gmail/nodemailer (`GMAIL_USER`, `GMAIL_APP_PASSWORD`). It's being switched to Brevo because Gmail app passwords aren't available on the sender account. Keep the workflow and README in sync when that lands.
+Email goes through the **Brevo HTTP API** (`POST /v3/smtp/email`), one message per recipient. Gmail SMTP isn't used: app passwords weren't available. The API key can send but can't read account endpoints (403 there is normal). fpt.org.pl isn't authenticated in Brevo yet (no Brevo SPF/DKIM; DMARC is `p=none`), so mail may land in spam until those DNS records are added.
 
 The repo is **public**: never print secrets in logs, and don't add `pull_request`/`push` workflow triggers that would run with secrets.
 
@@ -88,6 +88,7 @@ DRY_RUN=1 DUMP_DIR=debug npm run scrape -- klimat cz-mpo   # test sources, save 
 npm run scrape                                            # live, all sources (spends ~17 credits)
 npm run score                                             # score unscored articles from the last 7 days
 npm run preview                                           # docs/index.html
+npm run digest -- --test                                  # send only to DIGEST_FROM (safe test)
 npm run digest                                            # SENDS EMAIL to all recipients — don't run casually
 ```
 
