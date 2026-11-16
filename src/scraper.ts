@@ -1,5 +1,5 @@
 // Picks the fetch method + parser for each source kind.
-import { fetchHtml, fetchMarkdown, htmlToText } from "./fetcher.ts";
+import { fetchArticleMarkdown, fetchHtml, fetchMarkdown } from "./fetcher.ts";
 import type { Source } from "./sources.ts";
 import {
   type Article,
@@ -54,15 +54,7 @@ export async function scrapeSource(source: Source): Promise<Article[]> {
   }
 }
 
-// Czech and Slovak article pages serve plain HTML (and often have cookie walls that trip a
-// headless browser), so they use free plain fetch. gov.pl articles go through Firecrawl.
-const PLAIN_FETCH_HOSTS =
-  /(^|\.)(gov\.cz|mzp\.gov\.cz|mpo\.gov\.cz|msmt\.gov\.cz|sfzp\.cz|sfzp\.gov\.cz|mf\.gov\.cz|dia\.gov\.cz|minzp\.sk|mhsr\.sk|minedu\.sk|mirri\.gov\.sk|envirofond\.sk)$/;
-
+// Article text for scoring: Firecrawl main-content markdown, images and footers stripped.
 export async function scrapeArticleContent(articleUrl: string): Promise<string> {
-  const host = new URL(articleUrl).hostname;
-  if (PLAIN_FETCH_HOSTS.test(host)) {
-    return htmlToText(await fetchHtml(articleUrl));
-  }
-  return cleanGovPlArticle(await fetchMarkdown(articleUrl));
+  return cleanGovPlArticle(await fetchArticleMarkdown(articleUrl)).slice(0, 10000);
 }

@@ -20,7 +20,7 @@ const insert = db.prepare(
 
 // Ignore articles published long ago (e.g. MF lists the whole year): they'd otherwise be
 // inserted as "new" the first time we see them and flood the digest.
-const MAX_AGE_DAYS = 30;
+const MAX_AGE_DAYS = Number(process.env.SCRAPE_MAX_AGE_DAYS || 7);
 function isTooOld(dmy: string): boolean {
   const m = dmy.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   if (!m) return false; // unknown date: keep
@@ -40,7 +40,7 @@ for (const source of sources) {
       console.log(`[${source.key}] skipped ${parsed.length - articles.length} older than ${MAX_AGE_DAYS} days`);
     }
     if (process.env.DRY_RUN) {
-      if (articles.length === 0) empty.push(source.key);
+      if (parsed.length === 0) empty.push(source.key);
       console.log(`[${source.key}] parsed ${articles.length}`);
       for (const a of articles) {
         console.log(`  ${a.date || "??.??.????"} | ${a.title.slice(0, 80)} | ${a.url}${a.summary ? "" : " | (no summary)"}`);
@@ -54,7 +54,7 @@ for (const source of sources) {
       added += Number(insert.run(a.url, a.title, a.summary, a.date, source.key, now).changes);
     }
     totalNew += added;
-    if (articles.length === 0) empty.push(source.key);
+    if (parsed.length === 0) empty.push(source.key);
     console.log(`[${source.key}] parsed ${articles.length}, new ${added}`);
   } catch (err) {
     failed.push(source.key);
@@ -63,14 +63,14 @@ for (const source of sources) {
 }
 
 if (process.env.DRY_RUN) {
-  console.log(`Dry run, nothing saved. Firecrawl calls: ${stats.firecrawlCalls}, plain fetches: ${stats.plainFetches}.`);
+  console.log(`Dry run, nothing saved. Firecrawl calls: ${stats.firecrawlCalls}.`);
   if (empty.length) console.log(`Parsed 0 from: ${empty.join(", ")}`);
   if (failed.length) console.log(`Failed: ${failed.join(", ")}`);
   process.exit(0);
 }
 const total = saveDb(db);
 console.log(
-  `Done. ${totalNew} new articles (${total} total). Firecrawl calls: ${stats.firecrawlCalls}, plain fetches: ${stats.plainFetches}.`,
+  `Done. ${totalNew} new articles (${total} total). Firecrawl calls: ${stats.firecrawlCalls}.`,
 );
 if (empty.length) console.warn(`::warning::Parsed 0 articles from: ${empty.join(", ")} (parser may need re-tuning)`);
 if (failed.length) console.warn(`::warning::Failed sources: ${failed.join(", ")}`);

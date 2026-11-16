@@ -1,6 +1,8 @@
-// Two ways to get a page:
-//  - fetchMarkdown: Firecrawl /v2/scrape (1 credit per call). Used where sites need a real browser.
-//  - fetchHtml:     plain fetch, free. Used wherever a site serves usable HTML.
+// Every page is fetched through Firecrawl /v2/scrape (1 credit per call), from a proxy in the
+// site's own country (gov.pl blocks foreign proxies). Three modes:
+//  - fetchMarkdown:        whole page as markdown (listing pages; parsers stop at footers themselves)
+//  - fetchHtml:            whole page as raw HTML (minzp.sk, whose parser reads HTML)
+//  - fetchArticleMarkdown: main content only (article text for scoring: no menus or cookie banners)
 // With DUMP_DIR set (e.g. DUMP_DIR=debug), every fetched page is saved there and reused on
 // later runs, so parsers can be re-tuned offline without spending credits.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -11,38 +13,35 @@ const FIRECRAWL_URL = "https://api.firecrawl.dev/v2/scrape";
 const MIN_GAP_MS = 7000;
 const MAX_ATTEMPTS = Number(process.env.FIRECRAWL_ATTEMPTS || 3);
 
-const BROWSER_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let lastFirecrawlCall = 0;
-export const stats = { firecrawlCalls: 0, plainFetches: 0 };
+export const stats = { firecrawlCalls: 0 };
 
-function dumpPath(url: string, ext: "md" | "html"): string | null {
+type Mode = { format: "markdown" | "rawHtml"; onlyMainContent: boolean; ext: string };
+const LISTING_MD: Mode = { format: "markdown", onlyMainContent: false, ext: "md" };
+const LISTING_HTML: Mode = { format: "rawHtml", onlyMainContent: false, ext: "html" };
+const ARTICLE_MD: Mode = { format: "markdown", onlyMainContent: true, ext: "main.md" };
+
+export const fetchMarkdown = (url: string) => cached(url, LISTING_MD);
+export const fetchHtml = (url: string) => cached(url, LISTING_HTML);
+export const fetchArticleMarkdown = (url: string) => cached(url, ARTICLE_MD);
+
+async function cached(url: string, mode: Mode): Promise<string> {
   const dir = process.env.DUMP_DIR;
-  if (!dir) return null;
-  mkdirSync(dir, { recursive: true });
-  return join(dir, url.replace(/^https?:\/\//, "").replace(/[^a-zA-Z0-9.-]+/g, "_").slice(0, 150) + "." + ext);
-}
-
-async function cached(url: string, ext: "md" | "html", fetchLive: () => Promise<string>): Promise<string> {
-  const path = dumpPath(url, ext);
+  const path = dir
+    ? join(dir, url.replace(/^https?:\/\//, "").replace(/[^a-zA-Z0-9.-]+/g, "_").slice(0, 150) + "." + mode.ext)
+    : null;
   if (path && existsSync(path)) {
     console.log(`  [cache] ${path}`);
     return readFileSync(path, "utf8");
   }
-  const text = await fetchLive();
-  if (path) writeFileSync(path, text);
+  const text = await firecrawl(url, mode);
+  if (path) {
+    mkdirSync(dir!, { recursive: true });
+    writeFileSync(path, text);
+  }
   return text;
-}
-
-export function fetchMarkdown(url: string): Promise<string> {
-  return cached(url, "md", () => fetchMarkdownLive(url));
-}
-
-export function fetchHtml(url: string): Promise<string> {
-  return cached(url, "html", () => fetchHtmlLive(url));
 }
 
 function locationFor(url: string): { country: string; languages: string[] } | null {
@@ -53,9 +52,10 @@ function locationFor(url: string): { country: string; languages: string[] } | nu
   return null;
 }
 
-async function fetchMarkdownLive(url: string): Promise<string> {
+async function firecrawl(url: string, mode: Mode): Promise<string> {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) throw new Error("FIRECRAWL_API_KEY is not set");
+  const location = locationFor(url);
 
   let lastError = "";
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -69,12 +69,11 @@ async function fetchMarkdownLive(url: string): Promise<string> {
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         url,
-        formats: ["markdown"],
-        onlyMainContent: false, // parsers expect the whole page and stop at footer markers themselves
+        formats: [mode.format],
+        onlyMainContent: mode.onlyMainContent,
         maxAge: 0, // always fetch live: listing pages change daily
         timeout: 90000,
-        // gov.pl blocks foreign proxies — fetch each site from its own country.
-        ...(locationFor(url) && { location: locationFor(url) }),
+        ...(location && { location }),
       }),
       signal: AbortSignal.timeout(120000),
     });
@@ -91,34 +90,7 @@ async function fetchMarkdownLive(url: string): Promise<string> {
 
     const body = await resp.json();
     if (!body.success) throw new Error(`Firecrawl failed for ${url}: ${JSON.stringify(body).slice(0, 300)}`);
-    return body.data?.markdown ?? "";
+    return body.data?.[mode.format] ?? "";
   }
   throw new Error(`Firecrawl gave up on ${url}: ${lastError}`);
-}
-
-async function fetchHtmlLive(url: string): Promise<string> {
-  stats.plainFetches++;
-  const resp = await fetch(url, {
-    redirect: "follow",
-    headers: { "User-Agent": BROWSER_UA },
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
-  return resp.text();
-}
-
-export function htmlToText(html: string, maxChars = 10000): string {
-  return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxChars);
 }

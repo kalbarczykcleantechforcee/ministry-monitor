@@ -14,7 +14,7 @@ if (!file) {
 const rows = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>[];
 const db = new DatabaseSync(":memory:");
 db.exec(`CREATE TABLE articles (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, summary TEXT, date TEXT,
-  source TEXT, scraped_at INTEGER, score INTEGER, score_reason TEXT)`);
+  source TEXT, scraped_at INTEGER, score INTEGER, score_reason TEXT, title_en TEXT)`);
 const insert = db.prepare(`INSERT INTO articles (${COLUMNS.join(", ")}) VALUES (${COLUMNS.map(() => "?").join(", ")})`);
 for (const r of rows) insert.run(...COLUMNS.map((c) => (r[c] ?? null) as string | number | null));
 

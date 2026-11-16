@@ -17,6 +17,7 @@ export const COLUMNS = [
   "scraped_at",
   "score",
   "score_reason",
+  "title_en",
 ] as const;
 
 export interface ArticleRow {
@@ -28,7 +29,8 @@ export interface ArticleRow {
   source: string; // Source.key
   scraped_at: number; // unix seconds
   score: number | null; // null = not scored yet
-  score_reason: string | null;
+  score_reason: string | null; // Polish for PL sources, English for CZ/SK
+  title_en: string | null; // English title translation (CZ/SK only)
 }
 
 export function openDb(): DatabaseSync {
@@ -42,7 +44,8 @@ export function openDb(): DatabaseSync {
     source TEXT,
     scraped_at INTEGER,
     score INTEGER,
-    score_reason TEXT
+    score_reason TEXT,
+    title_en TEXT
   )`);
 
   if (existsSync(DATA_FILE)) {

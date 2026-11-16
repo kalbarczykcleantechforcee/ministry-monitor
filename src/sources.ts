@@ -8,7 +8,7 @@ export type SourceKind =
   | "mf" // MF press releases: "[Title](url)" + date line
   | "msmt"
   | "sfzp"
-  | "minzp" // plain HTML fetch (page has ~200 articles; no Firecrawl needed)
+  | "minzp" // Firecrawl raw HTML (page has ~200 articles; parser reads HTML)
   | "mhsr"
   | "minedu"
   | "mirri"
