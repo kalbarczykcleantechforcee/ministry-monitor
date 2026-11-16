@@ -1,0 +1,18 @@
+{
+  "name": "visegrad-ministry-monitor",
+  "private": true,
+  "description": "Monitors PL/CZ/SK ministry press releases, scores them for EU climate/industrial policy relevance, emails a weekly digest.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "scrape": "node --env-file-if-exists=.env scripts/scrape.ts",
+    "score": "node --env-file-if-exists=.env scripts/score.ts",
+    "preview": "node --env-file-if-exists=.env scripts/digest.ts --preview",
+    "digest": "node --env-file-if-exists=.env scripts/digest.ts"
+  },
+  "dependencies": {
+    "nodemailer": "^6.10.1"
+  }
+}

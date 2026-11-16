@@ -1,0 +1,57 @@
+name: Daily scrape + score
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: "Only these source keys (space-separated). Empty = all."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-writes
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Scrape listings
+        env:
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          SOURCES: ${{ github.event.inputs.sources }}
+        run: node scripts/scrape.ts $SOURCES
+
+      - name: Score new articles
+        continue-on-error: true
+        env:
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/score.ts
+
+      - name: Build preview page
+        if: always()
+        run: node scripts/digest.ts --preview
+
+      - name: Commit data
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add data docs
+          if git diff --cached --quiet; then echo "No changes."; exit 0; fi
+          git commit -m "data: daily run $(date -u +%F)"
+          git push
